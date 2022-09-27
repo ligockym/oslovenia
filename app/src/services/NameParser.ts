@@ -1,25 +1,9 @@
 /**
  * Parses name with titles
  */
-import Title from "../models/Title";
-
-// Order is important! More important first, then longer (Ing. arch.).
-
-// TODO: Fill data from https://www.vysokeskoly.sk/clanok/akademicke-tituly-a-ich-pouzivanie
-export const titleDatabase: Title[] = [
-    new Title("Doktor",
-        [/PhD\./],
-        "PhD.",
-        "doktor",
-        `Tento titul sa udeľuje osobám, ktoré v rámci svojho vysokoškolského študijného programu uskutočnili 
-        výskumnú prácu v predmete svojho štúdia a prípadne splnili ďalšie podmienky presnejšie definované študijnými 
-        zvyklosťami krajiny (napr. obhájili dizertačnú prácu pred komisiou).`,
-        "https://sk.wikipedia.org/wiki/Doktor_(PhD.)"),
-    new Title("Inžinier architekt", [/Ing\. arch\./], "Ing. arch.", "inžinier", "Akademický titul, ktorý sa udeľuje po absolvovaní inžinierskeho štúdia v oblasti architektúry a urbanizmu.", "https://sk.wikipedia.org/wiki/In%C5%BEinier_architekt"),
-    new Title("Inžinier", [/Ing./], "Ing.", "inžinier", "Akademický titul sa udeľuje absolventom vysokoškolského inžinierskeho štúdia v technických, ekonomických a poľnohospodárskych študijných odboroch.", "https://sk.wikipedia.org/wiki/In%C5%BEinier"),
-    new Title("Magister", [/Mgr\./], "Mgr.", "magister", "Akademický titul udeľovaný absolventom univerzitných, bohosloveckých a umeleckých vysokých škôl.", "https://sk.wikipedia.org/wiki/Bakal%C3%A1r"),
-    new Title("Bakalár", [/Bc\./], "Bc.", "", "Akademický titul, ktorý sa udeľuje absolventom prvého (bakalárskeho) stupňa vysokoškolského štúdia.", "https://sk.wikipedia.org/wiki/Magister_(akademick%C3%A1_hodnos%C5%A5)"),
-];
+import {toff} from "../i18n";
+import {titleDatabaseCz, titleDatabaseSk} from "../titleDatabase";
+import type Title from "../models/Title";
 
 export type NameParserResult = {
     name: string; // firstname + lastname
@@ -27,19 +11,19 @@ export type NameParserResult = {
 }
 
 export default class NameParser {
-    parseName(name: string): NameParserResult {
+    parseName(name: string, language: string): NameParserResult {
         const titles: Title[] = [];
-        titleDatabase.forEach((title, index) => {
-            title.regex.forEach((regex) => {
-                const replaced = name.replace(regex, '');
-                if (replaced !== name) {
-                    // found, because it was replaced
-                    titles.push(title);
-                }
+        const titleDatabase = language === 'sk' ? titleDatabaseSk : titleDatabaseCz;
 
-                // update name so it does not include already found title
-                name = replaced;
-            });
+        titleDatabase.forEach((title, index) => {
+            const replaced = name.replace(title.regex, '');
+            if (replaced !== name) {
+                // found, because it was replaced
+                titles.push(title);
+            }
+
+            // update name so it does not include already found title
+            name = replaced;
         });
 
         // trim
@@ -53,14 +37,48 @@ export default class NameParser {
     }
 
     /**
-     * Returns false, when no special salutation can be used.
+     * Returns highest title from parser result.
      * @param result
      */
-    getSalutation(result: NameParserResult): string | boolean {
-        if (result.titles.length > 0 && result.titles[0].salutation) {
-            return result.titles[0].salutation;
+    getHighestTitle(result: NameParserResult): Title | false {
+        if (result.titles.length === 0) return false;
+        return result.titles[0];
+    }
+
+    /**
+     * Returns salutation for a gender. Otherwise empty string is returned.
+     * @param title
+     * @param gender
+     */
+    getTitleSalutation(title: Title, gender: Gender): string {
+        // no title => no special salutation
+        return gender === 'man' ? title.salutationMan : title.salutationWoman;
+    }
+
+    getNormalGenderSalutation(gender: Gender, language: string) {
+        if (language === 'sk') {
+            return gender === 'man' ? 'pán' : 'pani';
+        } else {
+            // cz
+            return gender === 'man' ? 'pane' : 'paní';
         }
-        return false;
+    }
+
+    /**
+     * From name and title returns whole salutation such as "pán inžinier"
+     * @param parserResult
+     * @param gender
+     * @param language
+     */
+    getWholeSalutation(parserResult: NameParserResult, gender: Gender, language: string) {
+        let result = this.getNormalGenderSalutation(gender, language);
+
+        const highestTitle = this.getHighestTitle(parserResult);
+        if (highestTitle && highestTitle.salutationMan) {
+            result += ' ' + this.getTitleSalutation(highestTitle, gender);
+        }
+
+        return result;
     }
 
     // TODO: Some other time.
@@ -73,7 +91,7 @@ export default class NameParser {
         // first remove all span tags
         result.titles.forEach((title, index) => {
             // replace Ing. with colored <span>Ing.</span>
-           name = name.replace(title.correctAbbr, `<span style="color: ${colors[index][0]}; background-color: ${colors[index][1]}">${title.correctAbbr}</span>`)
+            name = name.replace(title.correctAbbr, `<span style="color: ${colors[index][0]}; background-color: ${colors[index][1]}">${title.correctAbbr}</span>`)
         });
 
         return name;
